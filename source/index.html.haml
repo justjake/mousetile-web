@@ -1,0 +1,33 @@
+---
+title: Mousetile 2
+description: Return of mousable tiling window managers
+---
+
+:markdown
+  # Mousetile 2
+
+  This is a web-only mousetile implementation. My first attempt, to abstract 
+  the differences between Clutter and the DOM, became far too complex too early.
+  The first implementation was 100% absolute layout, and encountered problems 
+  transforming between ratio-space and integer pixel grid space, as well as 
+  code bloat from over-abstraction. GJS was also a rather uncooperative and 
+  un-documented platform, and significantly slowed down my implementation speed.
+
+  This time the goal is to get a fully working moustile implementation quickly,
+  and rely on the browser and precent-based widths for most layout shenanigans.
+
+= javascript_include_tag '/javascripts/site.js'
+#app.horizontal
+
+
+:coffeescript
+  window.ROOT = null
+  $('document').ready ->
+    window.ROOT = ROOT = new Mousetile.Frame()
+    $('#app').append(ROOT.element)
+    ROOT.parent = {layout: Mousetile.HORIZ}
+    ROOT.setSize()
+
+    tree = Mousetile.recursive_tree(Mousetile.select_alternate(1), 6)
+    ROOT.appendFrame(tree)
+    ROOT.fitFrames()

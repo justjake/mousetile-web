@@ -7,3 +7,97 @@
 @import "_vendor/bourbon/bourbon";
 
 
+/* Frame base behavior
+   frames are the basic GUI component of Mousetile.
+   they may contain any number of frames and handles */
+$handle-size: 0.5em;
+$frame-padding: $handle-size / 2;
+
+@mixin remove-first-last-padding {
+    /* nullify padding on first and last elements */
+    &:first-of-type {
+        padding-left:   0;
+        padding-top:    0;
+    }
+    &:last-of-type {
+        padding-right:  0;
+        padding-bottom: 0;
+    }
+}
+
+.frame {
+    @include box-sizing(border-box);
+    display: block;
+    position: relative;
+    @include clearfix;
+
+
+    /* vertical layouts
+         -------------
+        |      |      |
+        |      |      |
+        |      |      |
+        |      |      |
+         -------------   */
+    .vertical > & {
+        float: left;
+        padding: 0 $frame-padding;
+        @include remove-first-last-padding;
+        height: 100%;
+    }
+
+    /* horizontal layouts
+         -------------
+        |             |
+        |             |
+        ---------------
+        |             |
+        |             |
+         -------------   */
+    .horizontal > & {
+        padding: $frame-padding 0;
+        @include remove-first-last-padding;
+    }
+}
+
+/* Handle base behavior
+   handles sit between two frames.
+   they allow resizing, and when a special key is held, frame movement */
+.handle {
+    @include box-sizing(border-box);
+    display: block;
+    position: absolute;
+
+    .vertical > & {
+        top: 0;
+        bottom: 0;
+        width: $handle-size;
+
+        // center around left offset value
+        margin-left: -1 * $frame-padding;
+    }
+
+    .horizontal > & {
+        left: 0;
+        right: 0;
+        height: $handle-size;
+
+        // center around top offset value
+        margin-top: -1 * $frame-padding;
+    }
+}
+
+/* styles for layout primitives */
+.frame {
+    outline: 1px solid rgba(#fff, 0.5);
+    background: rgba(#00f, 0.1);
+}
+.handle {
+    background: rgba(#f00, 0.2);
+}
+
+/* app stage */
+#app {
+    height: 1000px;
+}
+
