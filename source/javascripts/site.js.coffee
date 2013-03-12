@@ -1,12 +1,40 @@
 VERT  = 1
 HORIZ = 0
 
+BEFORE = true
+AFTER  = false
+
+Array_remove = (ary, el_or_idx) ->
+    if (typeof el_or_index) == 'number'
+        # index sanity check
+        index = el_or_index
+
+        # wrap-around indexing
+        if index < 0
+            index = ary.length + index
+
+        if not (index > -1 and index < ary.length)
+            throw new Error("InvalidRemoval: index #{index} out of bounds")
+
+        el = ary[index]
+
+    else
+
+        el = frame_or_index
+        index = ary.indexOf(el)
+        if index == -1
+            throw new Error("InvalidRemoval: #{el} not found in #{ary}")
+
+    ary.splice(index, 1)
+    el
+
+
 class Frame
 
     VERT_CLASS  = "vertical"
     HORIZ_CLASS = "horizontal"
 
-    template = jQuery("""<div class="frame"></div>""")
+    template = jQuery("""<section class="frame"></section>""")
 
     constructor: (size = 100, layout = VERT) ->
         @element = template.clone()
@@ -21,6 +49,9 @@ class Frame
         # layout
         @setSize(size)
         @setLayout(layout)
+
+        # the handle that manages this frame
+        @handle = null
 
     ###
     DOM layout shenanigans
@@ -37,6 +68,7 @@ class Frame
             throw new Error("layout can only be set to VERT or HORIZ")
 
         @layoutChildren()
+        this
 
     
     # set to a target size, or just reset the dimensions after a layout
@@ -56,12 +88,19 @@ class Frame
 
             @element.css(dim, "#{percent}%")
 
-
+        this
 
 
     layoutChildren: ->
+        not_first = false
         for f in @frames
             f.setSize()
+            # add handles if we need them
+            if not f.handle and not_first
+                h = new Handle(f)
+                @addHandle(h)
+            not_first = true
+
         for h in @handles
             h.layout()
 
@@ -79,6 +118,8 @@ class Frame
         if dom_insert
             @element.append(node.element)
 
+        node
+
     removeChild: (node) ->
         idx = @children.indexOf(node)
 
@@ -91,6 +132,8 @@ class Frame
         # and remove the DOM element from play
         node.element.remove()
 
+        node
+
 
 
     ###
@@ -98,33 +141,65 @@ class Frame
     should be re-worked
     ###
     appendFrame: (frame) ->
+        @insertFrame(frame, @frames.length)
+
+    insertFrame: (frame, idx = @frames.length, side = BEFORE) ->
         @addChild(frame)
 
-        # DOM element management
-        # insert after all current frames
-        f = @frames[@frames.length - 1]
-        if f
-            f.element.after(frame.element)
-        else
-            @element.append(frame.element)
+        # insert frame adds elements BEFORE the existing element at
+        # `idx` by default.
+        # Shift by 1 to add elements after
+        if side is AFTER
+            idx += 1
 
-        # welcome, child!
-        @frames.push(frame)
+        # check for sane insertion idx
+        if idx > @frames.length
+            throw new Error("InvalidInsertion: target index out of bounds")
+
+        # get a frame next to the insertion index to use as an anchor in
+        # the dom
+        f = @frames[idx - 1]
+        if f
+            f.element.after(frame.elememnt)
+        else
+            # We are going to be the only frame in the array
+            @element.prepend(frame.element)
+
+        @frames.splice(idx, 0, frame)
+
+    removeFrame: (frame_or_index) ->
+        frame = Array_remove(@frames, frame_or_index)
+
+        @removeHandle(frame.handle) if frame.handle
+        @removeChild(frame)
 
     addHandle: (handle) ->
         @addChild(handle)
         @handles.push(handle)
+        handle
+
+    removeHandle: (handle) ->
+        @removeChild(handle)
+        Array_remove(handle)
+
 
     # The sum of all frame widths should be 100%
-    fitFrames: ->
+    resizeFramesFit: ->
         target  = 100
         current = @frames.reduce ((t, s) -> t + s.size), 0
-        console.log('calculated size to be', current)
         ratio   = target / current
-        console.log('ratio is', ratio)
 
         for f in @frames
             f.setSize(f.size * ratio)
+
+    # make all frames equal size
+    resizeFramesEqual: ->
+        size = 100 / @frames.length
+        for f in @frames
+            f.setSize(size)
+
+    resizeFrames: ->
+        @resizeFramesEqual()
 
 
 ###
@@ -152,7 +227,7 @@ class Handle
         if i is -1
             throw new Error("InvalidGraph: frame #{@frame} not included in parent's frame table")
 
-        offset = @parent.frames[0...i].reduce (t, s) -> t + s.size
+        offset = @parent.frames[0...i].reduce ((t, s) -> t + s.size), 0
 
         if @parent.layout is VERT
             ord = 'left'
@@ -184,12 +259,15 @@ recursive_tree = (dir_selector, depth_remaining) ->
 
     root = new Frame(100, dir_selector())
 
-    empty_child = new Frame()
+    a = new Frame()
+    b = new Frame()
     full_child =  recursive_tree(dir_selector, depth_remaining - 1)
 
-    root.appendFrame(empty_child)
+    root.appendFrame(a)
     root.appendFrame(full_child)
-    root.fitFrames()
+    root.appendFrame(b)
+    root.resizeFramesEqual()
+    root.layoutChildren()
 
     return root
 

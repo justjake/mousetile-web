@@ -63,14 +63,15 @@ $frame-padding: $handle-size / 2;
 /* Handle base behavior
    handles sit between two frames.
    they allow resizing, and when a special key is held, frame movement */
+$handle-offset: 0;
 .handle {
     @include box-sizing(border-box);
     display: block;
     position: absolute;
 
     .vertical > & {
-        top: 0;
-        bottom: 0;
+        top: $handle-offset;
+        bottom: $handle-offset;
         width: $handle-size;
 
         // center around left offset value
@@ -78,8 +79,8 @@ $frame-padding: $handle-size / 2;
     }
 
     .horizontal > & {
-        left: 0;
-        right: 0;
+        left: $handle-offset;
+        right: $handle-offset;
         height: $handle-size;
 
         // center around top offset value
@@ -93,7 +94,7 @@ $frame-padding: $handle-size / 2;
     background: rgba(#00f, 0.1);
 }
 .handle {
-    background: rgba(#f00, 0.2);
+    background: #fff;
 }
 
 /* app stage */
