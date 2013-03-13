@@ -16,6 +16,7 @@ description: Return of mousable tiling window managers
   This time the goal is to get a fully working moustile implementation quickly,
   and rely on the browser and precent-based widths for most layout shenanigans.
 
+= javascript_include_tag '/javascripts/draggable.js'
 = javascript_include_tag '/javascripts/site.js'
 #app.horizontal
 
@@ -31,3 +32,6 @@ description: Return of mousable tiling window managers
     tree = Mousetile.recursive_tree(Mousetile.select_alternate(1), 6)
     ROOT.appendFrame(tree)
     ROOT.resizeFrames()
+    ROOT.layoutChildren(true)
+    $(window).resize ->
+        ROOT.layoutChildren(true)

@@ -1,3 +1,4 @@
+
 VERT  = 1
 HORIZ = 0
 
@@ -27,6 +28,16 @@ Array_remove = (ary, el_or_idx) ->
 
     ary.splice(index, 1)
     el
+
+# bind a function as `this`
+bind = (fn, obj) ->
+    return ->
+        fn.apply(obj, arguments)
+
+
+# is this element currently in the DOM
+in_dom = (el) ->
+    !!(el.closest(document.documentElement).length)
 
 
 class Frame
@@ -91,15 +102,18 @@ class Frame
         this
 
 
-    layoutChildren: ->
+    layoutChildren: (recurse = false) ->
         not_first = false
         for f in @frames
             f.setSize()
             # add handles if we need them
             if not f.handle and not_first
-                h = new Handle(f)
-                @addHandle(h)
+                f.handle = new Handle(f)
+                @addHandle(f.handle)
             not_first = true
+
+            if recurse
+                f.layoutChildren(true)
 
         for h in @handles
             h.layout()
@@ -216,8 +230,13 @@ class Handle
         @frame   = frame
         @parent  = null
         @element = template.clone()
+        @draggable = new Draggable.Draggable(@element,
+            moveCb: bind(@dragCallback, this),
+            endCb: bind(@dropCallback, this))
 
-    # reposition this handle
+        @pos = null # used for calculating drag deltas
+
+    # reposition this handle to its frame
     layout: ->
         if not @parent
             throw new Error("HandleLayoutFailure: cannot lay out a handle without a parent")
@@ -228,6 +247,31 @@ class Handle
             throw new Error("InvalidGraph: frame #{@frame} not included in parent's frame table")
 
         offset = @parent.frames[0...i].reduce ((t, s) -> t + s.size), 0
+        @setOffset(offset)
+
+        # also update draggable area bounds, but only if we're currently
+        # in the DOM. No other way to do global positioning.
+        if in_dom(@parent.element)
+            # TODO: maybe ditch the bounds thing and just use a better
+            # calculation during the Move callback?
+            if @parent._top_left and @parent._bottom_right
+                # cached parent offset information
+                @draggable.updateBounds(@parent._top_left, @parent._bottom_right)
+            else if false
+                parent_offset = @parent.element.offset()
+                top_left = new Draggable.Position(parent_offset.left, parent_offset.top)
+                parent_size = new Draggable.Position(@parent.element.width(), @parent.element.height())
+                bottom_right = top_left.add(parent_size)
+                @parent._top_left = top_left
+                @parent._bottom_right = bottom_right
+
+                @draggable.updateBounds(top_left, bottom_right)
+
+
+
+
+    setOffset: (offset = @offset) ->
+        @offset = offset
 
         if @parent.layout is VERT
             ord = 'left'
@@ -239,6 +283,36 @@ class Handle
         @element.css('left', '')
 
         @element.css(ord, "#{offset}%")
+
+    moveBy: (px) ->
+        s = @parent.element.width() if @parent.layout is VERT
+        s = @parent.element.height() if @parent.layout is HORIZ
+        diff = (px * 100) / s
+
+        @setOffset(@offset + diff)
+
+    dragCallback: (dest, start) ->
+
+        if not @pos
+            @pos = start
+
+        delta = dest.sub(@pos)
+        @pos = dest
+
+        # constrain to the correct orientation
+        if @parent.layout is VERT
+            ord = 'x'
+        else
+            ord = 'y'
+
+        @moveBy(delta[ord])
+        # TODO: resize the frames
+   
+    dropCallback: ->
+        @pos = null
+
+
+
 
 
 other = (dir) ->
@@ -259,14 +333,15 @@ recursive_tree = (dir_selector, depth_remaining) ->
 
     root = new Frame(100, dir_selector())
 
-    a = new Frame()
-    b = new Frame()
-    full_child =  recursive_tree(dir_selector, depth_remaining - 1)
+    a = (new Frame()).setSize(1)
+    b = (new Frame()).setSize(1)
+    full_child =  recursive_tree(dir_selector, depth_remaining - 1).setSize(2)
 
     root.appendFrame(a)
     root.appendFrame(full_child)
     root.appendFrame(b)
-    root.resizeFramesEqual()
+
+    root.resizeFramesFit()
     root.layoutChildren()
 
     return root
