@@ -74,6 +74,8 @@ $handle-offset: 0;
         bottom: $handle-offset;
         width: $handle-size;
 
+        cursor: ew-resize;
+
         // center around left offset value
         margin-left: -1 * $frame-padding;
     }
@@ -82,6 +84,8 @@ $handle-offset: 0;
         left: $handle-offset;
         right: $handle-offset;
         height: $handle-size;
+
+        cursor: ns-resize;
 
         // center around top offset value
         margin-top: -1 * $frame-padding;

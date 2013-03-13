@@ -34,6 +34,14 @@ bind = (fn, obj) ->
     return ->
         fn.apply(obj, arguments)
 
+throttle = (wait, fn) ->
+    timer = null
+    return ->
+        context = this
+        args = arguments
+        clearTimeout(timer)
+        timer = setTimeout (-> fn.apply(context, args)), wait
+
 
 # is this element currently in the DOM
 in_dom = (el) ->
@@ -44,6 +52,8 @@ class Frame
 
     VERT_CLASS  = "vertical"
     HORIZ_CLASS = "horizontal"
+
+    @MIN_PIXEL_WIDTH = 10
 
     template = jQuery("""<section class="frame"></section>""")
 
@@ -249,26 +259,6 @@ class Handle
         offset = @parent.frames[0...i].reduce ((t, s) -> t + s.size), 0
         @setOffset(offset)
 
-        # also update draggable area bounds, but only if we're currently
-        # in the DOM. No other way to do global positioning.
-        if in_dom(@parent.element)
-            # TODO: maybe ditch the bounds thing and just use a better
-            # calculation during the Move callback?
-            if @parent._top_left and @parent._bottom_right
-                # cached parent offset information
-                @draggable.updateBounds(@parent._top_left, @parent._bottom_right)
-            else if false
-                parent_offset = @parent.element.offset()
-                top_left = new Draggable.Position(parent_offset.left, parent_offset.top)
-                parent_size = new Draggable.Position(@parent.element.width(), @parent.element.height())
-                bottom_right = top_left.add(parent_size)
-                @parent._top_left = top_left
-                @parent._bottom_right = bottom_right
-
-                @draggable.updateBounds(top_left, bottom_right)
-
-
-
 
     setOffset: (offset = @offset) ->
         @offset = offset
@@ -284,12 +274,16 @@ class Handle
 
         @element.css(ord, "#{offset}%")
 
-    moveBy: (px) ->
+    to_percent: (px) ->
         s = @parent.element.width() if @parent.layout is VERT
         s = @parent.element.height() if @parent.layout is HORIZ
-        diff = (px * 100) / s
+        (px * 100) / s
 
-        @setOffset(@offset + diff)
+    from_percent: (percent) ->
+        s = @parent.element.width() if @parent.layout is VERT
+        s = @parent.element.height() if @parent.layout is HORIZ
+        (percent / 100) * s
+
 
     dragCallback: (dest, start) ->
 
@@ -305,8 +299,23 @@ class Handle
         else
             ord = 'y'
 
-        @moveBy(delta[ord])
-        # TODO: resize the frames
+        delta = @to_percent(delta[ord])
+
+        # resize things
+        right = @frame
+        left  = @parent.frames[@parent.frames.indexOf(@frame) - 1]
+
+        left_intention = left.size + delta
+        right_intention = right.size - delta
+
+        # guard exceeding limits
+        if @from_percent(left_intention) < Frame.MIN_PIXEL_WIDTH or @from_percent(right_intention) < Frame.MIN_PIXEL_WIDTH
+            return false
+
+        left.setSize(left_intention)
+        right.setSize(right_intention)
+
+        @setOffset(@offset + delta)
    
     dropCallback: ->
         @pos = null
@@ -353,6 +362,7 @@ exports = {
     'HORIZ': HORIZ
     'recursive_tree': recursive_tree
     'select_alternate': select_alternate
+    'throttle': throttle
 }
 
 # write out

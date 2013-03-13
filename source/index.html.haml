@@ -33,5 +33,8 @@ description: Return of mousable tiling window managers
     ROOT.appendFrame(tree)
     ROOT.resizeFrames()
     ROOT.layoutChildren(true)
-    $(window).resize ->
-        ROOT.layoutChildren(true)
+    if true
+      $(window).resize Mousetile.throttle 250, ->
+          ROOT.layoutChildren(true)
+    else
+        $(window).resize -> ROOT.layoutChildren(true)
