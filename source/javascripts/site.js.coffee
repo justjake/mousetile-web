@@ -1,9 +1,35 @@
+# Constatns
+EPSILON = 0.0001
 
-VERT  = 1
-HORIZ = 0
+# Enums
+VERT  = 'VERTICAL'
+HORIZ = 'HORIZONTAL'
 
 BEFORE = true
 AFTER  = false
+
+PIXEL   = 1
+PERCENT = 2
+
+# Base class for mixin support
+# http://arcturo.github.com/library/coffeescript/03_classes.html
+class Module
+    moduleKeyworks = ['extended', 'included']
+
+    @extend: (obj) ->
+        for k, v of obj when k not in moduleKeyworks
+            @[k] = v
+
+        obj.extended?.apply(@)
+        this
+
+    @include: (obj) ->
+        for k, v of obj when k not in moduleKeyworks
+            # assign on the prototype
+            @::[k] = v
+
+        obj.included?.apply(@)
+        this
 
 Array_remove = (ary, el_or_idx) ->
     if (typeof el_or_index) == 'number'
@@ -29,6 +55,10 @@ Array_remove = (ary, el_or_idx) ->
     ary.splice(index, 1)
     el
 
+# Fudge-factor equality with floating points
+close_to = (a, b) ->
+    Math.abs(a - b) < EPSILON
+
 # bind a function as `this`
 bind = (fn, obj) ->
     return ->
@@ -47,18 +77,43 @@ throttle = (wait, fn) ->
 in_dom = (el) ->
     !!(el.closest(document.documentElement).length)
 
+TemplateTools = 
+    instantiate_template: (binding_key = @constructor.name) ->
+        node = @constructor.template.clone()
+        node.data(binding_key, this)
+        node
 
-class Frame
+SizeTools = 
+    to_percent: (px, parent_size) ->
+        s = @parent.element.width() if @parent.layout is VERT
+        s = @parent.element.height() if @parent.layout is HORIZ
+        s = parent_size if parent_size is not null
+        (px * 100) / s
+
+    to_pixels: (percent, parent_size) ->
+        s = @parent.element.width() if @parent.layout is VERT
+        s = @parent.element.height() if @parent.layout is HORIZ
+        s = parent_size if parent_size is not null
+        Math.ceil( (percent / 100) * s )
+
+SizeTools.from_percent = SizeTools.to_pixels
+
+
+class Frame extends Module
+
+    @include SizeTools
+    @include TemplateTools
 
     VERT_CLASS  = "vertical"
     HORIZ_CLASS = "horizontal"
 
-    @MIN_PIXEL_WIDTH = 10
+    @MIN_PIXEL_WIDTH = 40
+    @MIN_PERCENT_WIDTH = 10
 
-    template = jQuery("""<section class="frame"></section>""")
+    @template = jQuery("""<section class="frame"></section>""")
 
     constructor: (size = 100, layout = VERT) ->
-        @element = template.clone()
+        @element = @instantiate_template()
 
         # graph
         @children = []
@@ -73,6 +128,7 @@ class Frame
 
         # the handle that manages this frame
         @handle = null
+
 
     ###
     DOM layout shenanigans
@@ -93,8 +149,9 @@ class Frame
 
     
     # set to a target size, or just reset the dimensions after a layout
-    setSize: (percent = @size) ->
-        @size = percent
+    setSize: (size = @size, size_type = PERCENT) ->
+        @size = percent = size if size_type == PERCENT
+        @size = percent = @to_percent(size) if size_type == PIXEL
 
         # Is this the right place to do the actual resizing?
         if @parent
@@ -127,6 +184,43 @@ class Frame
 
         for h in @handles
             h.layout()
+
+    # called recursively to validate resizing a frame via a handle
+    # we should consider an approach instead where the resize is
+    # performed if there is any way to make the children valid, so that
+    # this is possible
+    #
+    # Right edge dragged inwards:
+    #   -----------------         -------------
+    #  |  |        |     |       |  |    |     |
+    #  |  |        |     |       |  |    |     |
+    #  |  |        |     X  ->   |  |    |     X
+    #  |  |        |     |       |  |    |     |
+    #  |  |        |     |       |  |    |     |
+    #   -----------------         -------------
+    #
+    # the validator is passed the intended size as a percent,
+    # and a parent size in pixels, or null, if the parent is top-level
+    validateResizeIntention: (target_size, direction, parent_size = null) ->
+        # expansion is always valid
+        if target_size > @size
+            return true
+
+        # console.log('VERT') if direction is VERT
+        # console.log('HORIZ') if direction is HORIZ
+
+        # validate for this object based on a minimum pixel size
+        if @to_pixels(target_size, parent_size) < Frame.MIN_PIXEL_WIDTH and direction == @parent.layout
+            @flash(text: 'Too small!')
+            return false
+
+        # make sure the resize would keep our children at valid sizes
+        if @frames.length
+            for f in @frames
+                if not f.validateResizeIntention(f.size, direction, @to_pixels(target_size, parent_size))
+                    return false
+            console.groupEnd()
+        return true
 
     ###
     Graph management
@@ -225,6 +319,23 @@ class Frame
     resizeFrames: ->
         @resizeFramesEqual()
 
+    # Visual message passing!
+    # TODO: debounce this 
+    flash: ({text, color, duration}) ->
+        # defaults
+        duration ?= 200
+        color ?=    'red'
+
+        if text
+            node = $("""<span class="flash" style="position: absolute; top: 3px; left: 3px">#{text}</span>""")
+
+        # do the messaging
+        @element.css('background', color).prepend(node)
+        setTimeout (=>
+            node.remove() if text
+            @element.css('background', '')
+        ), duration
+
 
 ###
 Handles
@@ -233,13 +344,17 @@ These super-special objects bind to frames and derive thier position from them.
 They allow dragging to resize thier frames
 ###
 
-class Handle
-    template = $("""<div class="handle"></div>""")
+class Handle extends Module
+
+    @include SizeTools
+    @include TemplateTools
+
+    @template = $("""<div class="handle"></div>""")
 
     constructor: (frame) ->
         @frame   = frame
         @parent  = null
-        @element = template.clone()
+        @element = @instantiate_template()
         @draggable = new Draggable.Draggable(@element,
             moveCb: bind(@dragCallback, this),
             endCb: bind(@dropCallback, this))
@@ -274,16 +389,6 @@ class Handle
 
         @element.css(ord, "#{offset}%")
 
-    to_percent: (px) ->
-        s = @parent.element.width() if @parent.layout is VERT
-        s = @parent.element.height() if @parent.layout is HORIZ
-        (px * 100) / s
-
-    from_percent: (percent) ->
-        s = @parent.element.width() if @parent.layout is VERT
-        s = @parent.element.height() if @parent.layout is HORIZ
-        (percent / 100) * s
-
 
     dragCallback: (dest, start) ->
 
@@ -291,7 +396,6 @@ class Handle
             @pos = start
 
         delta = dest.sub(@pos)
-        @pos = dest
 
         # constrain to the correct orientation
         if @parent.layout is VERT
@@ -309,9 +413,13 @@ class Handle
         right_intention = right.size - delta
 
         # guard exceeding limits
-        if @from_percent(left_intention) < Frame.MIN_PIXEL_WIDTH or @from_percent(right_intention) < Frame.MIN_PIXEL_WIDTH
+        exceeds_bound = right.validateResizeIntention(right_intention, @parent.layout) &&
+            left.validateResizeIntention(left_intention, @parent.layout)
+        
+        if not exceeds_bound # TODO: add handling for this on the Draggable side
             return false
 
+        @pos = dest
         left.setSize(left_intention)
         right.setSize(right_intention)
 
